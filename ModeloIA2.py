@@ -44,16 +44,18 @@ df["fuera_de_rango"] = df.apply(
     axis=1
 )
 
-# 4. Clasificación del estado de velocidad
-def clasificar_estado(v):
-    if v >= 90:
-        return 3  # crítica
-    elif v >= 70:
-        return 2  # grave
-    else:
-        return 1  # leve
+# 4. Clasificación del estado de velocidad basada en los límites
+def clasificar_alerta(row):
+    min_v = row["vel_min"]
+    max_v = row["vel_max"]
+    if row["velocidad_kmh"] < min_v:
+        return 0  # leve
+    elif min_v <= row["velocidad_kmh"] < max_v:
+        return 1  # grave
+    else:  # velocidad_kmh >= max_v
+        return 2  # crítica
 
-df["estado_velocidad"] = df["velocidad_kmh"].apply(clasificar_estado)
+df["estado_velocidad"] = df.apply(clasificar_alerta, axis=1)
 
 # 5. Codificación de variables categóricas
 le_dia = LabelEncoder()
@@ -112,4 +114,4 @@ objeto = {
 with open("modelo_completo.lpk", "wb") as f:
     pickle.dump(objeto, f)
 
-print("Modelo entrenado y guardado con éxito usando gps.json")
+print("Modelo entrenado y guardado con éxito usando clasificación 0–1–2 basada en límites por tramo.")
