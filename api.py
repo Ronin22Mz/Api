@@ -8,8 +8,11 @@ from zoneinfo import ZoneInfo
 app = FastAPI()
 
 # Cargar modelo y codificadores
-with open("modelo_completo.lpk", "rb") as f:
-    data = pickle.load(f)
+try:
+    with open("modelo_completo.lpk", "rb") as f:
+        data = pickle.load(f)
+except Exception as e:
+    raise RuntimeError(f"❌ Error al cargar el modelo: {e}")
 
 modelo = data["modelo"]
 le = data["label_encoders"]
@@ -55,10 +58,9 @@ class DatosEntrada(BaseModel):
 @app.post("/alerta")
 def predecir_alerta(data: DatosEntrada):
     hora_peru = datetime.now(ZoneInfo("America/Lima")).strftime("%Y-%m-%d %H:%M:%S")
-
     entrada = data.dict()
 
-    # Obtener límites del tramo
+    # Validar ruta y tramo
     info_tramo = limites_ruta.get(data.ruta, {}).get(data.tramo)
     if not info_tramo:
         return {
@@ -73,18 +75,40 @@ def predecir_alerta(data: DatosEntrada):
     entrada["vel_max"] = info_tramo["max"]
     entrada["fuera_de_rango"] = 1 if data.velocidad_kmh < info_tramo["min"] or data.velocidad_kmh > info_tramo["max"] else 0
 
-    # Codificar variables categóricas
-    entrada["dia_semana"] = le["dia_semana"].transform([entrada["dia_semana"]])[0]
-    entrada["clima"] = le["clima"].transform([entrada["clima"]])[0]
-    entrada["ruta"] = le["ruta"].transform([entrada["ruta"]])[0]
-    entrada["tramo"] = le["tramo"].transform([entrada["tramo"]])[0]
+    # Codificar variables categóricas con validación
+    try:
+        entrada["dia_semana"] = le["dia_semana"].transform([entrada["dia_semana"]])[0]
+    except ValueError:
+        return {"error": f"Valor de dia_semana no reconocido: '{entrada['dia_semana']}'"}
+
+    try:
+        entrada["clima"] = le["clima"].transform([entrada["clima"]])[0]
+    except ValueError:
+        return {"error": f"Valor de clima no reconocido: '{entrada['clima']}'"}
+
+    try:
+        entrada["ruta"] = le["ruta"].transform([entrada["ruta"]])[0]
+    except ValueError:
+        return {"error": f"Valor de ruta no reconocido: '{entrada['ruta']}'"}
+
+    try:
+        entrada["tramo"] = le["tramo"].transform([entrada["tramo"]])[0]
+    except ValueError:
+        return {"error": f"Valor de tramo no reconocido: '{entrada['tramo']}'"}
+
+    # Filtrar solo las columnas que el modelo espera
+    entrada = {k: v for k, v in entrada.items() if k in columnas}
 
     # Preparar entrada para el modelo
-    X_nuevo = pd.DataFrame([entrada])[columnas]
-    pred = modelo.predict(X_nuevo)[0]
+    try:
+        X_nuevo = pd.DataFrame([entrada])[columnas]
+        pred = modelo.predict(X_nuevo)[0]
+    except Exception as e:
+        return {"error": f"Error al hacer la predicción: {e}"}
 
     return {
         "n_vehiculo": data.n_vehiculo,
         "fecha_hora": hora_peru,
+        "codigo_alerta": int(pred),
         "tipo_alerta": alertas[int(pred)]
     }
