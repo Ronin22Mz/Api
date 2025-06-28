@@ -30,7 +30,6 @@ class DatosEntrada(BaseModel):
 @app.post("/alerta")
 def predecir_alerta(data: DatosEntrada):
     hora_peru = datetime.now(ZoneInfo("America/Lima")).strftime("%Y-%m-%d %H:%M:%S")
-
     entrada = data.dict()
 
     # Codificar variables categóricas
