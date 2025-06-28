@@ -73,6 +73,8 @@ def predecir_alerta(data: DatosEntrada):
     entrada["vel_min"] = info_tramo["min"]
     entrada["vel_max"] = info_tramo["max"]
     entrada["fuera_de_rango"] = 1 if data.velocidad_kmh < info_tramo["min"] or data.velocidad_kmh > info_tramo["max"] else 0
+    entrada["km_por_tramo_minimo"] = info_tramo["min"]
+    entrada["km_por_tramo_maximo"] = info_tramo["max"]
 
     # Codificar variables categóricas
     try:
