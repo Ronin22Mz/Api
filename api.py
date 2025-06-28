@@ -12,7 +12,7 @@ try:
     with open("modelo_completo.lpk", "rb") as f:
         data = pickle.load(f)
 except Exception as e:
-    raise RuntimeError(f"❌ Error al cargar el modelo: {e}")
+    raise RuntimeError(f"Error al cargar el modelo: {e}")
 
 modelo = data["modelo"]
 le = data["label_encoders"]
@@ -66,49 +66,43 @@ def predecir_alerta(data: DatosEntrada):
         return {
             "n_vehiculo": data.n_vehiculo,
             "fecha_hora": hora_peru,
-            "codigo_alerta": -1,
             "tipo_alerta": "ruta o tramo no definidos"
         }
 
-    # Agregar límites y fuera de rango
+    # Calcular campos derivados
     entrada["vel_min"] = info_tramo["min"]
     entrada["vel_max"] = info_tramo["max"]
     entrada["fuera_de_rango"] = 1 if data.velocidad_kmh < info_tramo["min"] or data.velocidad_kmh > info_tramo["max"] else 0
 
-    # Codificar variables categóricas con validación
+    # Codificar variables categóricas
     try:
         entrada["dia_semana"] = le["dia_semana"].transform([entrada["dia_semana"]])[0]
-    except ValueError:
-        return {"error": f"Valor de dia_semana no reconocido: '{entrada['dia_semana']}'"}
-
-    try:
         entrada["clima"] = le["clima"].transform([entrada["clima"]])[0]
-    except ValueError:
-        return {"error": f"Valor de clima no reconocido: '{entrada['clima']}'"}
-
-    try:
         entrada["ruta"] = le["ruta"].transform([entrada["ruta"]])[0]
-    except ValueError:
-        return {"error": f"Valor de ruta no reconocido: '{entrada['ruta']}'"}
-
-    try:
         entrada["tramo"] = le["tramo"].transform([entrada["tramo"]])[0]
-    except ValueError:
-        return {"error": f"Valor de tramo no reconocido: '{entrada['tramo']}'"}
+    except ValueError as e:
+        return {
+            "n_vehiculo": data.n_vehiculo,
+            "fecha_hora": hora_peru,
+            "tipo_alerta": f"valor no reconocido: {e}"
+        }
 
     # Filtrar solo las columnas que el modelo espera
     entrada = {k: v for k, v in entrada.items() if k in columnas}
 
-    # Preparar entrada para el modelo
+    # Hacer predicción
     try:
         X_nuevo = pd.DataFrame([entrada])[columnas]
         pred = modelo.predict(X_nuevo)[0]
     except Exception as e:
-        return {"error": f"Error al hacer la predicción: {e}"}
+        return {
+            "n_vehiculo": data.n_vehiculo,
+            "fecha_hora": hora_peru,
+            "tipo_alerta": f"error en predicción: {e}"
+        }
 
     return {
         "n_vehiculo": data.n_vehiculo,
         "fecha_hora": hora_peru,
-        "codigo_alerta": int(pred),
         "tipo_alerta": alertas[int(pred)]
     }
