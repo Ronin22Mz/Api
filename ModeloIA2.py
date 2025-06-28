@@ -111,7 +111,7 @@ objeto = {
     }
 }
 
-with open("modelo_completo.lpk", "wb") as f:
+with open("modelocompleto.lpk", "wb") as f:
     pickle.dump(objeto, f)
 
 print("Modelo entrenado y guardado con éxito usando clasificación 0–1–2 basada en límites por tramo.")

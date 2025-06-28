@@ -9,7 +9,7 @@ app = FastAPI()
 
 # Cargar modelo y codificadores
 try:
-    with open("modelo_completo.lpk", "rb") as f:
+    with open("modelocompleto.lpk", "rb") as f:
         data = pickle.load(f)
 except Exception as e:
     raise RuntimeError(f"Error al cargar el modelo: {e}")
