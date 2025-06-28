@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import pickle
 from pymongo import MongoClient
+from datetime import datetime
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
@@ -29,51 +30,18 @@ projection = {
 }
 df = pd.DataFrame(list(col.find({}, projection)))
 
-# 3. Diccionario de límites por ruta y tramo
-limites_ruta = {
-    "Ruta A": {
-        "Tramo A1": {"min": 40, "max": 60},
-        "Tramo A2": {"min": 45, "max": 65},
-        "Tramo A3": {"min": 50, "max": 70},
-        "Tramo A4": {"min": 40, "max": 55},
-        "Tramo A5": {"min": 45, "max": 60}
-    },
-    "Ruta B": {
-        "Tramo B1": {"min": 50, "max": 75},
-        "Tramo B2": {"min": 45, "max": 70},
-        "Tramo B3": {"min": 55, "max": 80},
-        "Tramo B4": {"min": 50, "max": 70},
-        "Tramo B5": {"min": 40, "max": 60},
-        "Tramo B6": {"min": 45, "max": 65}
-    },
-    "Ruta C": {
-        "Tramo C1": {"min": 40, "max": 55},
-        "Tramo C2": {"min": 45, "max": 65},
-        "Tramo C3": {"min": 50, "max": 70},
-        "Tramo C4": {"min": 55, "max": 75}
-    }
-}
-
-# 4. Agregar columnas de límites y fuera de rango
-df["vel_min"] = df.apply(lambda row: limites_ruta.get(row["ruta"], {}).get(row["tramo"], {}).get("min", 0), axis=1)
-df["vel_max"] = df.apply(lambda row: limites_ruta.get(row["ruta"], {}).get(row["tramo"], {}).get("max", 999), axis=1)
-df["fuera_de_rango"] = df.apply(
-    lambda row: 1 if row["velocidad_kmh"] < row["vel_min"] or row["velocidad_kmh"] > row["vel_max"] else 0,
-    axis=1
-)
-
-# 5. Clasificación del estado de velocidad
+# 3. Clasificación del estado de velocidad según norma legal
 def clasificar_estado(v):
-    if v >= 90:
-        return 3  # crítica
-    elif v >= 70:
-        return 2  # grave
+    if v <= 50:
+        return 0  # leve
+    elif 51 <= v <= 65:
+        return 1  # grave
     else:
-        return 1  # leve
+        return 2  # crítica
 
 df["estado_velocidad"] = df["velocidad_kmh"].apply(clasificar_estado)
 
-# 6. Codificación de variables categóricas
+# 4. Codificación de variables categóricas
 le_dia = LabelEncoder()
 le_clima = LabelEncoder()
 le_ruta = LabelEncoder()
@@ -84,33 +52,38 @@ df["clima"] = le_clima.fit_transform(df["clima"].astype(str))
 df["ruta"] = le_ruta.fit_transform(df["ruta"].astype(str))
 df["tramo"] = le_tramo.fit_transform(df["tramo"].astype(str))
 
-# 7. División de datos
+# 5. División de datos
 X = df.drop(["estado_velocidad", "n_vehiculo"], axis=1)
 y = df["estado_velocidad"]
 
-# 8. Balanceo con SMOTE
+# 6. Balanceo con SMOTE
 smote = SMOTE(random_state=42)
 X_bal, y_bal = smote.fit_resample(X, y)
 
-# 9. Entrenamiento del modelo
+# 7. División en entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(
+    X_bal, y_bal, test_size=0.2, stratify=y_bal, random_state=42
+)
+
+# 8. Entrenamiento del modelo
 modelo = RandomForestClassifier(
     n_estimators=100, max_depth=10, class_weight="balanced", random_state=42
 )
-modelo.fit(X_bal, y_bal)
+modelo.fit(X_train, y_train)
 
-# 10. Evaluación
-y_pred = modelo.predict(X_bal)
-y_proba = modelo.predict_proba(X_bal)
+# 9. Evaluación
+y_pred = modelo.predict(X_test)
+y_proba = modelo.predict_proba(X_test)
 
-accuracy = accuracy_score(y_bal, y_pred)
-conf_matrix = confusion_matrix(y_bal, y_pred)
-class_report = classification_report(y_bal, y_pred, output_dict=True)
+accuracy = accuracy_score(y_test, y_pred)
+conf_matrix = confusion_matrix(y_test, y_pred)
+class_report = classification_report(y_test, y_pred, output_dict=True)
 try:
-    auc = roc_auc_score(y_bal, y_proba, multi_class="ovr")
+    auc = roc_auc_score(y_test, y_proba, multi_class="ovr")
 except:
     auc = None
 
-# 11. Guardado del modelo y codificadores
+# 10. Guardado del modelo y codificadores
 objeto = {
     "modelo": modelo,
     "label_encoders": {
@@ -130,4 +103,4 @@ objeto = {
 with open("modelo_completo.lpk", "wb") as f:
     pickle.dump(objeto, f)
 
-print("Modelo entrenado y guardado con éxito.")
+print("Modelo actualizado guardado")
