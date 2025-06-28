@@ -46,6 +46,5 @@ def predecir_alerta(data: DatosEntrada):
     return {
         "n_vehiculo": data.n_vehiculo,
         "fecha_hora": hora_peru,
-        "codigo_alerta": int(pred),
         "tipo_alerta": alertas[int(pred)]
     }
