@@ -1,21 +1,11 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import pandas as pd
-import pickle
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 app = FastAPI()
 
-# Cargar modelo y codificadores
-with open("modelo_completo.lpk", "rb") as f:
-    data = pickle.load(f)
-
-modelo = data["modelo"]
-le = data["label_encoders"]
-columnas = modelo.feature_names_in_.tolist()
-
-# Diccionario de límites por ruta y tramo
+# Límites por ruta y tramo
 limites_ruta = {
     "Ruta A": {
         "Tramo A1": {"min": 40, "max": 60},
@@ -41,7 +31,7 @@ limites_ruta = {
 }
 
 # Mapeo de códigos de alerta
-alertas = {1: "leve", 2: "grave", 3: "critica"}
+alertas = {0: "leve", 1: "grave", 2: "critica"}
 
 class DatosEntrada(BaseModel):
     n_vehiculo: str
@@ -53,13 +43,11 @@ class DatosEntrada(BaseModel):
     clima: str
 
 @app.post("/alerta")
-def predecir_alerta(data: DatosEntrada):
+def generar_alerta(data: DatosEntrada):
     hora_peru = datetime.now(ZoneInfo("America/Lima")).strftime("%Y-%m-%d %H:%M:%S")
 
-    entrada = data.dict()
-
-    # Obtener límites del tramo
     info_tramo = limites_ruta.get(data.ruta, {}).get(data.tramo)
+
     if not info_tramo:
         return {
             "n_vehiculo": data.n_vehiculo,
@@ -68,23 +56,19 @@ def predecir_alerta(data: DatosEntrada):
             "tipo_alerta": "ruta o tramo no definidos"
         }
 
-    # Agregar límites y fuera de rango
-    entrada["vel_min"] = info_tramo["min"]
-    entrada["vel_max"] = info_tramo["max"]
-    entrada["fuera_de_rango"] = 1 if data.velocidad_kmh < info_tramo["min"] or data.velocidad_kmh > info_tramo["max"] else 0
+    min_vel = info_tramo["min"]
+    max_vel = info_tramo["max"]
+    velocidad = data.velocidad_kmh
 
-    # Codificar variables categóricas
-    entrada["dia_semana"] = le["dia_semana"].transform([entrada["dia_semana"]])[0]
-    entrada["clima"] = le["clima"].transform([entrada["clima"]])[0]
-    entrada["ruta"] = le["ruta"].transform([entrada["ruta"]])[0]
-    entrada["tramo"] = le["tramo"].transform([entrada["tramo"]])[0]
-
-    # Preparar entrada para el modelo
-    X_nuevo = pd.DataFrame([entrada])[columnas]
-    pred = modelo.predict(X_nuevo)[0]
+    if velocidad < min_vel:
+        codigo_alerta = 0  # leve
+    elif min_vel <= velocidad <= max_vel:
+        codigo_alerta = 1  # grave
+    else:
+        codigo_alerta = 2  # critica
 
     return {
         "n_vehiculo": data.n_vehiculo,
         "fecha_hora": hora_peru,
-        "tipo_alerta": alertas[int(pred)]
+        "tipo_alerta": alertas[codigo_alerta]
     }

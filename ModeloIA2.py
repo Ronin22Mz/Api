@@ -1,7 +1,5 @@
 import pandas as pd
-import numpy as np
 import pickle
-from pymongo import MongoClient
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
@@ -10,26 +8,10 @@ from sklearn.metrics import (
 from sklearn.preprocessing import LabelEncoder
 from imblearn.over_sampling import SMOTE
 
-# 1. Conexión a MongoDB
-uri = "mongodb+srv://benja15mz:123@database.5iimvyd.mongodb.net/"
-client = MongoClient(uri)
-db = client["GPS"]
-col = db["Gps"]
+# 1. Cargar datos desde JSON (NDJSON)
+df = pd.read_json("gps.json", lines=True)
 
-# 2. Cargar datos
-projection = {
-    "_id": 0,
-    "n_vehiculo": 1,
-    "ruta": 1,
-    "tramo": 1,
-    "velocidad_kmh": 1,
-    "temperatura_motor_c": 1,
-    "dia_semana": 1,
-    "clima": 1
-}
-df = pd.DataFrame(list(col.find({}, projection)))
-
-# 3. Diccionario de límites por ruta y tramo
+# 2. Diccionario de límites por ruta y tramo
 limites_ruta = {
     "Ruta A": {
         "Tramo A1": {"min": 40, "max": 60},
@@ -54,7 +36,7 @@ limites_ruta = {
     }
 }
 
-# 4. Agregar columnas de límites y fuera de rango
+# 3. Agregar columnas de límites y fuera de rango
 df["vel_min"] = df.apply(lambda row: limites_ruta.get(row["ruta"], {}).get(row["tramo"], {}).get("min", 0), axis=1)
 df["vel_max"] = df.apply(lambda row: limites_ruta.get(row["ruta"], {}).get(row["tramo"], {}).get("max", 999), axis=1)
 df["fuera_de_rango"] = df.apply(
@@ -62,7 +44,7 @@ df["fuera_de_rango"] = df.apply(
     axis=1
 )
 
-# 5. Clasificación del estado de velocidad
+# 4. Clasificación del estado de velocidad
 def clasificar_estado(v):
     if v >= 90:
         return 3  # crítica
@@ -73,7 +55,7 @@ def clasificar_estado(v):
 
 df["estado_velocidad"] = df["velocidad_kmh"].apply(clasificar_estado)
 
-# 6. Codificación de variables categóricas
+# 5. Codificación de variables categóricas
 le_dia = LabelEncoder()
 le_clima = LabelEncoder()
 le_ruta = LabelEncoder()
@@ -84,21 +66,21 @@ df["clima"] = le_clima.fit_transform(df["clima"].astype(str))
 df["ruta"] = le_ruta.fit_transform(df["ruta"].astype(str))
 df["tramo"] = le_tramo.fit_transform(df["tramo"].astype(str))
 
-# 7. División de datos
-X = df.drop(["estado_velocidad", "n_vehiculo"], axis=1)
+# 6. División de datos
+X = df.drop(["estado_velocidad", "n_vehiculo", "id", "fecha_hora"], axis=1)
 y = df["estado_velocidad"]
 
-# 8. Balanceo con SMOTE
+# 7. Balanceo con SMOTE
 smote = SMOTE(random_state=42)
 X_bal, y_bal = smote.fit_resample(X, y)
 
-# 9. Entrenamiento del modelo
+# 8. Entrenamiento del modelo
 modelo = RandomForestClassifier(
     n_estimators=100, max_depth=10, class_weight="balanced", random_state=42
 )
 modelo.fit(X_bal, y_bal)
 
-# 10. Evaluación
+# 9. Evaluación
 y_pred = modelo.predict(X_bal)
 y_proba = modelo.predict_proba(X_bal)
 
@@ -110,7 +92,7 @@ try:
 except:
     auc = None
 
-# 11. Guardado del modelo y codificadores
+# 10. Guardado del modelo y codificadores
 objeto = {
     "modelo": modelo,
     "label_encoders": {
@@ -130,4 +112,4 @@ objeto = {
 with open("modelo_completo.lpk", "wb") as f:
     pickle.dump(objeto, f)
 
-print("Modelo entrenado y guardado con éxito.")
+print("Modelo entrenado y guardado con éxito usando gps.json")
